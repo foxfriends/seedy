@@ -1,17 +1,24 @@
-package seedy
+package config
 
 import (
 	"cuelang.org/go/cue/cuecontext"
 	"os"
 )
 
-type Config struct{}
+type Config struct {
+	SeedsDir string
+}
+
+func Default() *Config {
+	return &Config{
+		SeedsDir: "seeds",
+	}
+}
 
 type configError string
-
 func (self configError) Error() string { return string(self) }
 
-func LoadConfig(path string) (*Config, error) {
+func Load(path string) (*Config, error) {
 	ctx := cuecontext.New()
 	paths := []string{
 		"seedy.cue",
@@ -26,19 +33,21 @@ func LoadConfig(path string) (*Config, error) {
 			if os.IsNotExist(err) {
 				continue
 			}
+			return nil, err
 		}
 
 		source, err := os.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}
+
 		value := ctx.CompileBytes(source)
-		config := Config{}
+		config := Default()
 		value.Decode(config)
 		if value.Err() != nil {
 			return nil, value.Err()
 		}
-		return &Config{}, nil
+		return config, nil
 	}
 
 	return nil, configError("seedy configuration could not be found in any of the default locations (seedy.cue, seedy.json), run `seedy init` to generate a default configuration")

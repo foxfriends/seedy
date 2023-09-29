@@ -1,1 +1,1 @@
-{}
+{"SeedsDir":"seeds"}

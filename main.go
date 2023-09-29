@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/foxfriends/seedy/seedy"
+	"github.com/foxfriends/seedy/seedy/config"
 	"github.com/urfave/cli/v2"
 	"log"
 	"os"
@@ -23,8 +23,7 @@ func main() {
 				Name:  "init",
 				Usage: "initialize a new seedy project",
 				Action: func(ctx *cli.Context) error {
-					conf := seedy.Config{}
-					conf.Save("seedy.cue")
+					config.Default().Save("seedy.cue")
 					return nil
 				},
 			},
@@ -32,7 +31,7 @@ func main() {
 				Name:  "apply",
 				Usage: "update the database to the latest state",
 				Action: func(ctx *cli.Context) error {
-					if _, err := seedy.LoadConfig(ctx.String("config")); err != nil {
+					if _, err := config.Load(ctx.String("config")); err != nil {
 						return err
 					}
 					fmt.Println("todo: implement apply")
