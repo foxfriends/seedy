@@ -1,1 +1,1 @@
-{"SeedsDir":"seeds"}
+{"SeedsDir":"./seeds","DatabaseUrl":""}

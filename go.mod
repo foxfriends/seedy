@@ -4,6 +4,8 @@ go 1.21.1
 
 require (
 	cuelang.org/go v0.6.0
+	github.com/jmoiron/sqlx v1.3.5
+	github.com/lib/pq v1.10.7
 	github.com/urfave/cli/v2 v2.25.7
 )
 
