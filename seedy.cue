@@ -1,1 +1,0 @@
-{"SeedsDir":"./seeds","DatabaseUrl":""}
