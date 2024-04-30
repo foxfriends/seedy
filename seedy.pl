@@ -11,7 +11,9 @@ main :-
     argv([File]),
     atom_chars(F, File),
     use_module(F),
-    generate_migration.
+    assertz((existing(_) :- false)),
+    generate_migration,
+    halt.
 
 generate_migration :-
     connection(C),
@@ -23,7 +25,7 @@ load_existing(C, Name, Opts) :-
     findall(X, (member(column(X, T), Opts), \+member(generated, T)), Names),
     Select =.. [select | Names],
     sql(C, [Select, from(Name)], data(Rows)),
-    forall((member(Row, Rows), Entry =.. [Name | Row]), asserta(existing(Entry))).
+    forall((member(Row, Rows), Entry =.. [Name | Row]), assertz(existing(Entry))).
 
 delete_removed(Name, Opts) :-
     findall(_, (member(column(_, T), Opts), \+member(generated, T)), Vals),
@@ -74,18 +76,43 @@ escape_str([C | Cs], [C | Es]) :- escape_str(Cs, Es).
 
 quote(S, Q) :- append(["'", S, "'"], Q).
 
+cols_generated(Opts, Generated) :-
+    findall(N, (member(column(N, T), Opts), member(generated, T)), Generated).
+cols_key(Opts, Keys) :-
+    findall(N, (member(column(N, T), Opts), member(key, T)), Keys).
+cols_free(Opts, Free) :-
+    findall(N, (member(column(N, T), Opts), \+member(generated, T)), Free).
+cols_value(Opts, Keys) :-
+    findall(N, (member(column(N, T), Opts), \+member(generated, T), \+member(key, T)), Keys).
+
 write_insert(Name, Opts, Call) :-
     Call =.. [Name | Vals],
     maplist(escape, Vals, Escaped),
     Values =.. [values | Escaped],
-    findall(N, (member(column(N, T), Opts), \+member(generated, T)), Cols),
-    sql_query([insert_into(Name, Cols), Values], Sql, []),
+    cols_free(Opts, Cols),
+    cols_key(Opts, Keys),
+    cols_value(Opts, ToUpdate),
+    on_conflict_update(Keys, ToUpdate, Conflict),
+    sql_query([insert_into(Name, Cols), Values | Conflict], Sql, []),
     format("~s;~n", [Sql]).
+
+on_conflict_update([], _, []) :- !.
+on_conflict_update(_, [], []) :- !.
+on_conflict_update(Keys, Cols, [OnConflict, Set]) :-
+    OnConflict =.. [on_conflict_do_update | Keys],
+    maplist(set_old_new, Cols, Conds),
+    set(Conds, Set).
+
+set_old_new(Col, Col=New) :-
+    atom_concat('EXCLUDED.', Col, New).
 
 pair(A, B, A-B).
 
 where([Term], where(Term)).
-where([Term, Term | Terms], where((Term, Where))) :- where([Term | Terms], where(Where)).
+where([Term, T2 | Terms], where((Term, Where))) :- where([T2 | Terms], where(Where)).
+
+set([Term], set(Term)).
+set([Term, T2 | Terms], set((Term, Set))) :- set([T2 | Terms], set(Set)).
 
 write_delete(Name, Opts, Call) :-
     Call =.. [Name | Vals],
