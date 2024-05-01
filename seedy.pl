@@ -18,7 +18,6 @@ main :-
 generate_migration :-
     connection(C),
     forall(table(Name, Opts), load_existing(C, Name, Opts)),
-    forall(existing(Entry), format("-- existing: ~w~n", [Entry])),
     forall(table(Name, Opts), delete_removed(Name, Opts)),
     forall(table(Name, Opts), insert_created(Name, Opts)).
 
@@ -32,6 +31,7 @@ load_existing(C, Name, Opts) :-
 cast(string, V, V).
 cast(integer, S, V) :- number_chars(V, S).
 cast(float, S, V) :- number_chars(V, S).
+% cast(reference(T), S, V) :- ?.
 
 delete_removed(Name, Opts) :-
     cols_free(Opts, Names),
@@ -77,12 +77,29 @@ escape(string, C, E) :-
     escape_str(C, Escaped),
     quote(Escaped, Quoted),
     atom_chars(E, Quoted).
+escape(reference(T), C, E) :-
+    table(T, Opts),
+    C =.. [T | Vals],
+    cols_pk(Opts, [Pk]),
+    cols_key(Opts, Keys),
+    types_key(Opts, Types),
+    maplist(escape, Types, Vals, Escaped),
+    zip_eq(Keys, Escaped, Cond),
+    where(Cond, Where),
+    sql_query([select(Pk), from(T), Where], Sql, []),
+    paren(Sql, SubQ),
+    atom_chars(E, SubQ).
+
+zip_eq([], [], []).
+zip_eq([K | Ks], [V | Vs], [K = V | Kvs]) :- zip_eq(Ks, Vs, Kvs).
 
 escape_str("", "").
 escape_str(['\'' | Cs], ['\'', '\'' | Es]) :- !, escape_str(Cs, Es).
 escape_str([C | Cs], [C | Es]) :- escape_str(Cs, Es).
 
-quote(S, Q) :- append(["'", S, "'"], Q).
+quote(S, Q) :- wrap("'", "'", S, Q).
+paren(S, Q) :- wrap("(", ")", S, Q).
+wrap(P, S, I, Q) :- append([P, I, S], Q).
 
 cols_generated(Opts, Generated) :-
     findall(N, (member(column(N, T), Opts), member(generated, T)), Generated).
@@ -92,9 +109,14 @@ cols_free(Opts, Free) :-
     findall(N, (member(column(N, T), Opts), \+member(generated, T)), Free).
 cols_value(Opts, Keys) :-
     findall(N, (member(column(N, T), Opts), \+member(generated, T), \+member(key, T)), Keys).
+cols_pk(Opts, Pks) :-
+    findall(N, (member(column(N, T), Opts), member(pk, T)), Pks).
 
 types_free(Opts, Free) :-
     findall(C, (member(column(_, T), Opts), \+member(generated, T), member(type(C), T)), Free).
+types_key(Opts, Free) :-
+    findall(C, (member(column(_, T), Opts), member(key, T), member(type(C), T)), Free).
+
 opts_free(Opts, Free) :-
     findall(C, (member(C, Opts), C = column(_, T), \+member(generated, T)), Free).
 
@@ -106,13 +128,14 @@ write_insert(Name, Opts, Call) :-
     cols_free(Opts, Cols),
     cols_key(Opts, Keys),
     cols_value(Opts, ToUpdate),
-    on_conflict_update(Keys, ToUpdate, Conflict),
+    on_conflict(Keys, ToUpdate, Conflict),
     sql_query([insert_into(Name, Cols), Values | Conflict], Sql, []),
     format("~s;~n", [Sql]).
 
-on_conflict_update([], _, []) :- !.
-on_conflict_update(_, [], []) :- !.
-on_conflict_update(Keys, Cols, [OnConflict, Set]) :-
+on_conflict([], _, [on_conflict_do_nothing]) :- !.
+on_conflict(Keys, [], [OnConflict]) :-
+    OnConflict =.. [on_conflict_do_nothing | Keys].
+on_conflict(Keys, Cols, [OnConflict, Set]) :-
     OnConflict =.. [on_conflict_do_update | Keys],
     maplist(set_old_new, Cols, Conds),
     set(Conds, Set).
